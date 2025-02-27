@@ -1,49 +1,142 @@
-# Forge eQube-BI Dashboard
+import React from 'react';
+import Form, { Field } from '@atlaskit/form';
+import TextField from '@atlaskit/textfield';
+import Select from '@atlaskit/select';
+import Button, { ButtonGroup } from '@atlaskit/button';
+import { view } from '@forge/bridge';
 
-This project contains a Forge app written in JavaScript that displays eQube-BI Dashboard in a Jira dashboard gadget.
+function Edit() {
+  const onSubmit = (formData) => {
+    const { baseUrl, title, action } = formData;
 
-See [developer.atlassian.com/platform/forge/](https://developer.atlassian.com/platform/forge) for documentation and tutorials explaining Forge.
+    if (action?.value === 'login') {
+      const loginUrl = `${baseUrl}/service/initiateLogin`;
+      const loginWindow = window.open(loginUrl, '_blank');
 
-## Requirements
+      if (!loginWindow) {
+        alert("Popup blocked! Please allow popups and try again.");
+        return;
+      }
 
-See [Set up Forge](https://developer.atlassian.com/platform/forge/set-up-forge/) for instructions to get set up.
+      // Polling to check for URL change in the login tab
+      const interval = setInterval(() => {
+        try {
+          if (!loginWindow || loginWindow.closed) {
+            clearInterval(interval);
+            console.log("Login window closed");
+            return;
+          }
 
-## Quick start
-- Install top-level dependencies:
-```
-npm install
-```
+          // Check if login tab redirects to a known URL format containing a ticket
+          if (loginWindow.location.href.includes("ticket=")) {
+            const urlParams = new URLSearchParams(loginWindow.location.search);
+            const ticket = urlParams.get("ticket");
 
-- Install dependencies (inside of the `static/hello-world` directory):
-```
-npm install
-```
+            if (ticket) {
+              console.log("Extracted ticket:", ticket);
+              view.submit({ ticket });
+              loginWindow.close();
+              clearInterval(interval);
+            }
+          }
+        } catch (error) {
+          // Expected cross-origin errors when accessing another domain
+        }
+      }, 1000); // Check every second
 
-- Modify your app by editing the files in `static/eQube-BI/src/`.
+      return;
+    }
 
-- Build your app (inside of the `static/eQube-BI` directory):
-```
-npm run build
-```
+    let generatedUrl = `${baseUrl}`;
+    const params = new URLSearchParams();
+    if (title) params.append('title', title);
+    if (action) params.append('action', action.value);
 
-- Deploy your app by running:
-```
-forge deploy
-```
+    if (params.toString()) {
+      generatedUrl += `?${params.toString()}`;
+    }
 
-- Install your app in an Atlassian site by running:
-```
-forge install
-```
+    view.submit({ generatedUrl });
+    console.log(generatedUrl);
+  };
 
-### Notes
-- Use the `forge deploy` command when you want to persist code changes.
-- Use the `forge install` command when you want to install the app on a new site.
-- Once the app is installed on a site, the site picks up the new app changes you deploy without needing to rerun the install command.
+  return (
+    <Form onSubmit={onSubmit}>
+      {({ formProps, submitting }) => (
+        <form {...formProps}>
+          <Field name="baseUrl" label="Base URL" isRequired>
+            {({ fieldProps }) => <TextField {...fieldProps} />}
+          </Field>
+          <Field name="title" label="Title">
+            {({ fieldProps }) => <TextField {...fieldProps} />}
+          </Field>
+          <Field name="action" label="Action">
+            {({ fieldProps }) => (
+              <Select
+                {...fieldProps}
+                options={[
+                  { label: 'History', value: 'history' },
+                  { label: 'Future', value: 'future' },
+                  { label: 'Login', value: 'login' } // New option for login
+                ]}
+                isClearable
+              />
+            )}
+          </Field>
+          <br/>
+          <ButtonGroup>
+            <Button type="submit" isDisabled={submitting}>Load the URL</Button>
+            <Button appearance="subtle" onClick={view.close}>Cancel</Button>
+          </ButtonGroup>
+        </form>
+      )}
+    </Form>
+  );
+}
 
-## Support
+export default Edit;
 
-See [Get help](https://developer.atlassian.com/platform/forge/get-help/) for how to get help and provide feedback.
 
-468279ab-31f1-421e-b130-de8e0f97db4a
+import React, { useEffect, useState } from 'react';
+import { view } from '@forge/bridge';
 
+function View() {
+  const [context, setContext] = useState();
+  const [generatedUrl, setGeneratedUrl] = useState('');
+  const [authTicket, setAuthTicket] = useState(null);
+
+  useEffect(() => {
+    view.getContext().then((ctx) => {
+      setContext(ctx);
+      const rawUrl = ctx.extension.gadgetConfiguration?.generatedUrl || '';
+      setGeneratedUrl(decodeURIComponent(rawUrl));
+
+      if (ctx.extension.gadgetConfiguration?.ticket) {
+        setAuthTicket(ctx.extension.gadgetConfiguration.ticket);
+      }
+    });
+  }, []);
+
+  if (!context) {
+    return 'Loading...';
+  }
+
+  return (
+    <div>
+      {authTicket ? <p>Authenticated with Ticket: {authTicket}</p> : null}
+      {generatedUrl ? (
+        <iframe 
+          src={generatedUrl} 
+          width="100%" 
+          height="500px" 
+          title="Generated View"
+          key={generatedUrl} 
+        ></iframe>
+      ) : (
+        'No URL generated yet.'
+      )}
+    </div>
+  );
+}
+
+export default View;
