@@ -22,14 +22,19 @@ function Edit() {
     console.log(generatedUrl);
   };
 
-  const openLoginPage = () => {
-    const loginUrl = `/service/initiateLogin`; 
+  const openLoginPage = (baseUrl) => {
+    if (!baseUrl) {
+      alert("Please enter the Base URL first.");
+      return;
+    }
+
+    const loginUrl = `${baseUrl}/service/initiateLogin`; 
     router.open(loginUrl); // Opens the login page in a new tab
   };
 
   return (
     <Form onSubmit={onSubmit}>
-      {({ formProps, submitting }) => (
+      {({ formProps, submitting, getValues }) => (
         <form {...formProps}>
           <Field name="baseUrl" label="Base URL" isRequired>
             {({ fieldProps }) => <TextField {...fieldProps} />}
@@ -52,7 +57,7 @@ function Edit() {
             <Button appearance="subtle" onClick={view.close}>Cancel</Button>
           </ButtonGroup>
           <br/>
-          <Button appearance="primary" onClick={openLoginPage}>Login</Button>
+          <Button appearance="primary" onClick={() => openLoginPage(getValues().baseUrl)}>Login</Button>
         </form>
       )}
     </Form>
