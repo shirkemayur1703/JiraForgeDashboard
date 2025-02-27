@@ -1,45 +1,56 @@
-const openLoginWindow = (event) => {
-  event.preventDefault(); // Prevent form submission issues
+import React, { useState } from 'react';
+import Form, { Field } from '@atlaskit/form';
+import TextField from '@atlaskit/textfield';
+import Button, { ButtonGroup } from '@atlaskit/button';
+import { router, view } from '@forge/bridge';
 
-  if (!baseUrl) {
-    alert("Please enter the Base URL first.");
-    return;
-  }
+function Edit() {
+  const [baseUrl, setBaseUrl] = useState('');
 
-  const loginUrl = `${baseUrl}/service/initiateLogin`;
-
-  // Open a new window directly inside the event handler
-  const newWindow = window.open(loginUrl, '_blank', 'width=600,height=600');
-
-  if (!newWindow) {
-    alert("Popup blocked! Please allow popups and try again.");
-    return;
-  }
-
-  setLoginWindow(newWindow);
-
-  // Polling to check login completion
-  const interval = setInterval(() => {
-    try {
-      if (!newWindow || newWindow.closed) {
-        clearInterval(interval);
-        console.log("Login window closed");
-        return;
-      }
-
-      if (newWindow.location.href.includes("ticket=")) {
-        const urlParams = new URLSearchParams(newWindow.location.search);
-        const ticket = urlParams.get("ticket");
-
-        if (ticket) {
-          console.log("Extracted ticket:", ticket);
-          view.submit({ ticket });
-          newWindow.close();
-          clearInterval(interval);
-        }
-      }
-    } catch (error) {
-      // Expected cross-origin errors
+  const openLoginWindow = () => {
+    if (!baseUrl) {
+      alert("Please enter the Base URL first.");
+      return;
     }
-  }, 1000);
-};
+
+    const loginUrl = `${baseUrl}/service/initiateLogin`;
+    router.open(loginUrl); // Opens the login page in a new tab
+  };
+
+  const onSubmit = (formData) => {
+    setBaseUrl(formData.baseUrl); // Store baseUrl for login use
+
+    let generatedUrl = `${formData.baseUrl}`;
+    const params = new URLSearchParams();
+    if (formData.title) params.append('title', formData.title);
+
+    if (params.toString()) {
+      generatedUrl += `?${params.toString()}`;
+    }
+
+    view.submit({ generatedUrl });
+  };
+
+  return (
+    <Form onSubmit={onSubmit}>
+      {({ formProps, submitting }) => (
+        <form {...formProps}>
+          <Field name="baseUrl" label="Base URL" isRequired>
+            {({ fieldProps }) => (
+              <TextField {...fieldProps} onChange={(e) => setBaseUrl(e.target.value)} />
+            )}
+          </Field>
+          <br />
+          <ButtonGroup>
+            <Button type="submit" isDisabled={submitting}>Load the URL</Button>
+            <Button appearance="subtle" onClick={view.close}>Cancel</Button>
+          </ButtonGroup>
+          <br />
+          <Button onClick={openLoginWindow} appearance="primary">Login</Button>
+        </form>
+      )}
+    </Form>
+  );
+}
+
+export default Edit;
