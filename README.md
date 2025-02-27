@@ -1,67 +1,100 @@
-import React from 'react';
-import Form, { Field } from '@atlaskit/form';
-import TextField from '@atlaskit/textfield';
-import Select from '@atlaskit/select';
-import Button, { ButtonGroup } from '@atlaskit/button';
-import { view, router } from '@forge/bridge';
+import React, { useEffect, useState } from 'react';
+import { view } from '@forge/bridge';
 
-function Edit() {
-  const onSubmit = (formData) => {
-    const { baseUrl, title, action } = formData;
-    let generatedUrl = `${baseUrl}`;
-    
-    const params = new URLSearchParams();
-    if (title) params.append('title', title);
-    if (action) params.append('action', action.value);
-    
-    if (params.toString()) {
-      generatedUrl += `?${params.toString()}`;
+function decodeHtmlEntities(text) {
+  const parser = new DOMParser();
+  return parser.parseFromString(text, "text/html").body.textContent;
+}
+
+function View() {
+  const [context, setContext] = useState();
+  const [generatedUrl, setGeneratedUrl] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+
+  useEffect(() => {
+    view.getContext().then((ctx) => {
+      setContext(ctx);
+      const rawUrl = ctx.extension.gadgetConfiguration?.generatedUrl || '';
+      const decodedUrl = decodeHtmlEntities(rawUrl);
+      setGeneratedUrl(decodedUrl);
+      setBaseUrl(decodedUrl.split('?')[0]); // Extract base URL
+      checkForAuthentication(decodedUrl.split('?')[0]);
+    });
+  }, []);
+
+  function checkForAuthentication(baseUrl) {
+    if (!baseUrl) return;
+
+    let tokenData = sessionStorage.getItem("oAuthTokenData");
+    if (tokenData) {
+      tokenData = JSON.parse(tokenData);
+      if (tokenData[baseUrl]) {
+        console.log("Token exists for baseUrl:", baseUrl);
+        return;
+      }
     }
-    
-    view.submit({ generatedUrl });
-    console.log(generatedUrl);
-  };
+    console.log("No token found, initiating login...");
+    initiateLogin(baseUrl);
+  }
 
-  const openLoginPage = (baseUrl) => {
-    if (!baseUrl) {
-      alert("Please enter the Base URL first.");
+  function initiateLogin(baseUrl) {
+    if (!baseUrl) return;
+    
+    window.addEventListener("message", receiveMessage, false);
+    
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = `${baseUrl}/services/initiateLogin`;
+    form.target = "_blank";
+    
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "loginCompleteURL";
+    input.value = `Integration/validate_complete.jsp?SPURL=${encodeURIComponent(window.location.href)}`;
+    form.appendChild(input);
+    
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function receiveMessage(event) {
+    if (!baseUrl || !event.data) return;
+
+    if (event.data === "MULTIPLE_USERS" || event.data === "9097") {
+      console.error("Multiple users detected. Log out and try again.");
+      window.removeEventListener("message", receiveMessage);
       return;
     }
 
-    const loginUrl = `${baseUrl}/service/initiateLogin`; 
-    router.open(loginUrl); // Opens the login page in a new tab
-  };
+    const token = event.data;
+    if (token) {
+      let tokenData = sessionStorage.getItem("oAuthTokenData") ? JSON.parse(sessionStorage.getItem("oAuthTokenData")) : {};
+      tokenData[baseUrl] = token;
+      sessionStorage.setItem("oAuthTokenData", JSON.stringify(tokenData));
+      console.log("Token stored successfully:", token);
+      window.removeEventListener("message", receiveMessage);
+    }
+  }
+
+  if (!context) {
+    return 'Loading...';
+  }
 
   return (
-    <Form onSubmit={onSubmit}>
-      {({ formProps, submitting, getValues }) => (
-        <form {...formProps}>
-          <Field name="baseUrl" label="Base URL" isRequired>
-            {({ fieldProps }) => <TextField {...fieldProps} />}
-          </Field>
-          <Field name="title" label="Title">
-            {({ fieldProps }) => <TextField {...fieldProps} />}
-          </Field>
-          <Field name="action" label="Action">
-            {({ fieldProps }) => (
-              <Select
-                {...fieldProps}
-                options={[{ label: 'History', value: 'history' }, { label: 'Future', value: 'future' }]}
-                isClearable
-              />
-            )}
-          </Field>
-          <br/>
-          <ButtonGroup>
-            <Button type="submit" isDisabled={submitting}>Load the URL</Button>
-            <Button appearance="subtle" onClick={view.close}>Cancel</Button>
-          </ButtonGroup>
-          <br/>
-          <Button appearance="primary" onClick={() => openLoginPage(getValues().baseUrl)}>Login</Button>
-        </form>
+    <div>
+      {generatedUrl ? (
+        <iframe 
+          src={generatedUrl} 
+          width="100%" 
+          height="500px" 
+          title="Generated View"
+          key={generatedUrl} 
+        ></iframe>
+      ) : (
+        'No URL generated yet.'
       )}
-    </Form>
+    </div>
   );
 }
 
-export default Edit;
+export default View;
