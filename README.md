@@ -98,3 +98,16 @@ function View() {
 }
 
 export default View;
+function initiateLogin(baseUrl) {
+    if (!baseUrl) return;
+
+    window.addEventListener("message", receiveMessage, false);
+
+    const loginUrl = `${baseUrl}/services/initiateLogin`;
+    const loginCompleteURL = `Integration/validate_complete.jsp?SPURL=${encodeURIComponent(window.location.href)}`;
+
+    // Open the login URL in a new tab with the necessary parameters
+    const fullUrl = `${loginUrl}?loginCompleteURL=${encodeURIComponent(loginCompleteURL)}`;
+    
+    window.open(fullUrl, "_blank"); // ✅ Opens login page in a new tab
+}
