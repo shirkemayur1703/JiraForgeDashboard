@@ -1,34 +1,30 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Form, { Field } from '@atlaskit/form';
 import TextField from '@atlaskit/textfield';
+import Select from '@atlaskit/select';
 import Button, { ButtonGroup } from '@atlaskit/button';
-import { router, view } from '@forge/bridge';
+import { view, router } from '@forge/bridge';
 
 function Edit() {
-  const [baseUrl, setBaseUrl] = useState('');
-
-  const openLoginWindow = () => {
-    if (!baseUrl) {
-      alert("Please enter the Base URL first.");
-      return;
-    }
-
-    const loginUrl = `${baseUrl}/service/initiateLogin`;
-    router.open(loginUrl); // Opens the login page in a new tab
-  };
-
   const onSubmit = (formData) => {
-    setBaseUrl(formData.baseUrl); // Store baseUrl for login use
-
-    let generatedUrl = `${formData.baseUrl}`;
+    const { baseUrl, title, action } = formData;
+    let generatedUrl = `${baseUrl}`;
+    
     const params = new URLSearchParams();
-    if (formData.title) params.append('title', formData.title);
-
+    if (title) params.append('title', title);
+    if (action) params.append('action', action.value);
+    
     if (params.toString()) {
       generatedUrl += `?${params.toString()}`;
     }
-
+    
     view.submit({ generatedUrl });
+    console.log(generatedUrl);
+  };
+
+  const openLoginPage = () => {
+    const loginUrl = `/service/initiateLogin`; 
+    router.open(loginUrl); // Opens the login page in a new tab
   };
 
   return (
@@ -36,17 +32,27 @@ function Edit() {
       {({ formProps, submitting }) => (
         <form {...formProps}>
           <Field name="baseUrl" label="Base URL" isRequired>
+            {({ fieldProps }) => <TextField {...fieldProps} />}
+          </Field>
+          <Field name="title" label="Title">
+            {({ fieldProps }) => <TextField {...fieldProps} />}
+          </Field>
+          <Field name="action" label="Action">
             {({ fieldProps }) => (
-              <TextField {...fieldProps} onChange={(e) => setBaseUrl(e.target.value)} />
+              <Select
+                {...fieldProps}
+                options={[{ label: 'History', value: 'history' }, { label: 'Future', value: 'future' }]}
+                isClearable
+              />
             )}
           </Field>
-          <br />
+          <br/>
           <ButtonGroup>
             <Button type="submit" isDisabled={submitting}>Load the URL</Button>
             <Button appearance="subtle" onClick={view.close}>Cancel</Button>
           </ButtonGroup>
-          <br />
-          <Button onClick={openLoginWindow} appearance="primary">Login</Button>
+          <br/>
+          <Button appearance="primary" onClick={openLoginPage}>Login</Button>
         </form>
       )}
     </Form>
