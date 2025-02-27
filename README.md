@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Form, { Field } from '@atlaskit/form';
 import TextField from '@atlaskit/textfield';
 import Select from '@atlaskit/select';
@@ -6,51 +6,58 @@ import Button, { ButtonGroup } from '@atlaskit/button';
 import { view } from '@forge/bridge';
 
 function Edit() {
-  const onSubmit = (formData) => {
-    const { baseUrl, title, action } = formData;
+  const [baseUrl, setBaseUrl] = useState('');
+  const [loginWindow, setLoginWindow] = useState(null);
 
-    if (action?.value === 'login') {
-      const loginUrl = `${baseUrl}/service/initiateLogin`;
-      const loginWindow = window.open(loginUrl, '_blank');
-
-      if (!loginWindow) {
-        alert("Popup blocked! Please allow popups and try again.");
-        return;
-      }
-
-      // Polling to check for URL change in the login tab
-      const interval = setInterval(() => {
-        try {
-          if (!loginWindow || loginWindow.closed) {
-            clearInterval(interval);
-            console.log("Login window closed");
-            return;
-          }
-
-          // Check if login tab redirects to a known URL format containing a ticket
-          if (loginWindow.location.href.includes("ticket=")) {
-            const urlParams = new URLSearchParams(loginWindow.location.search);
-            const ticket = urlParams.get("ticket");
-
-            if (ticket) {
-              console.log("Extracted ticket:", ticket);
-              view.submit({ ticket });
-              loginWindow.close();
-              clearInterval(interval);
-            }
-          }
-        } catch (error) {
-          // Expected cross-origin errors when accessing another domain
-        }
-      }, 1000); // Check every second
-
+  const openLoginWindow = () => {
+    if (!baseUrl) {
+      alert("Please enter the Base URL first.");
       return;
     }
 
-    let generatedUrl = `${baseUrl}`;
+    const loginUrl = `${baseUrl}/service/initiateLogin`;
+    const newWindow = window.open(loginUrl, '_blank');
+
+    if (!newWindow) {
+      alert("Popup blocked! Please allow popups and try again.");
+      return;
+    }
+
+    setLoginWindow(newWindow);
+
+    // Polling to check when login is completed
+    const interval = setInterval(() => {
+      try {
+        if (!newWindow || newWindow.closed) {
+          clearInterval(interval);
+          console.log("Login window closed");
+          return;
+        }
+
+        if (newWindow.location.href.includes("ticket=")) {
+          const urlParams = new URLSearchParams(newWindow.location.search);
+          const ticket = urlParams.get("ticket");
+
+          if (ticket) {
+            console.log("Extracted ticket:", ticket);
+            view.submit({ ticket });
+            newWindow.close();
+            clearInterval(interval);
+          }
+        }
+      } catch (error) {
+        // Expected cross-origin errors when accessing another domain
+      }
+    }, 1000);
+  };
+
+  const onSubmit = (formData) => {
+    setBaseUrl(formData.baseUrl); // Store baseUrl for login use
+
+    let generatedUrl = `${formData.baseUrl}`;
     const params = new URLSearchParams();
-    if (title) params.append('title', title);
-    if (action) params.append('action', action.value);
+    if (formData.title) params.append('title', formData.title);
+    if (formData.action) params.append('action', formData.action.value);
 
     if (params.toString()) {
       generatedUrl += `?${params.toString()}`;
@@ -65,7 +72,7 @@ function Edit() {
       {({ formProps, submitting }) => (
         <form {...formProps}>
           <Field name="baseUrl" label="Base URL" isRequired>
-            {({ fieldProps }) => <TextField {...fieldProps} />}
+            {({ fieldProps }) => <TextField {...fieldProps} onChange={(e) => setBaseUrl(e.target.value)} />}
           </Field>
           <Field name="title" label="Title">
             {({ fieldProps }) => <TextField {...fieldProps} />}
@@ -76,8 +83,7 @@ function Edit() {
                 {...fieldProps}
                 options={[
                   { label: 'History', value: 'history' },
-                  { label: 'Future', value: 'future' },
-                  { label: 'Login', value: 'login' } // New option for login
+                  { label: 'Future', value: 'future' }
                 ]}
                 isClearable
               />
@@ -88,6 +94,8 @@ function Edit() {
             <Button type="submit" isDisabled={submitting}>Load the URL</Button>
             <Button appearance="subtle" onClick={view.close}>Cancel</Button>
           </ButtonGroup>
+          <br/>
+          <Button onClick={openLoginWindow} appearance="primary">Login</Button>
         </form>
       )}
     </Form>
@@ -95,48 +103,3 @@ function Edit() {
 }
 
 export default Edit;
-
-
-import React, { useEffect, useState } from 'react';
-import { view } from '@forge/bridge';
-
-function View() {
-  const [context, setContext] = useState();
-  const [generatedUrl, setGeneratedUrl] = useState('');
-  const [authTicket, setAuthTicket] = useState(null);
-
-  useEffect(() => {
-    view.getContext().then((ctx) => {
-      setContext(ctx);
-      const rawUrl = ctx.extension.gadgetConfiguration?.generatedUrl || '';
-      setGeneratedUrl(decodeURIComponent(rawUrl));
-
-      if (ctx.extension.gadgetConfiguration?.ticket) {
-        setAuthTicket(ctx.extension.gadgetConfiguration.ticket);
-      }
-    });
-  }, []);
-
-  if (!context) {
-    return 'Loading...';
-  }
-
-  return (
-    <div>
-      {authTicket ? <p>Authenticated with Ticket: {authTicket}</p> : null}
-      {generatedUrl ? (
-        <iframe 
-          src={generatedUrl} 
-          width="100%" 
-          height="500px" 
-          title="Generated View"
-          key={generatedUrl} 
-        ></iframe>
-      ) : (
-        'No URL generated yet.'
-      )}
-    </div>
-  );
-}
-
-export default View;
