@@ -1,80 +1,77 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import Form, { Field } from '@atlaskit/form';
+import TextField from '@atlaskit/textfield';
+import Button, { ButtonGroup } from '@atlaskit/button';
 import { view } from '@forge/bridge';
 
-function decodeHtmlEntities(text) {
-  const parser = new DOMParser();
-  return parser.parseFromString(text, "text/html").body.textContent;
+function Edit() {
+  const onSubmit = (formData) => {
+    const { baseUrl } = formData;
+    if (!baseUrl) return;
+
+    // Construct the login URL
+    const generatedUrl = `${baseUrl}/services/initiateLogin`;
+
+    // Pass the generated URL back to the View component
+    view.submit({ generatedUrl });
+    console.log("Generated URL:", generatedUrl);
+  };
+
+  return (
+    <Form onSubmit={onSubmit}>
+      {({ formProps, submitting }) => (
+        <form {...formProps}>
+          <Field name="baseUrl" label="Base URL" isRequired>
+            {({ fieldProps }) => <TextField {...fieldProps} />}
+          </Field>
+          <br />
+          <ButtonGroup>
+            <Button type="submit" isDisabled={submitting}>Load Login Page</Button>
+            <Button appearance="subtle" onClick={view.close}>Cancel</Button>
+          </ButtonGroup>
+        </form>
+      )}
+    </Form>
+  );
 }
+
+export default Edit;
+
+
+import React, { useEffect, useState } from 'react';
+import { view } from '@forge/bridge';
 
 function View() {
   const [context, setContext] = useState();
   const [generatedUrl, setGeneratedUrl] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
+  const [authTicket, setAuthTicket] = useState('');
 
   useEffect(() => {
     view.getContext().then((ctx) => {
       setContext(ctx);
       const rawUrl = ctx.extension.gadgetConfiguration?.generatedUrl || '';
-      const decodedUrl = decodeHtmlEntities(rawUrl);
-      setGeneratedUrl(decodedUrl);
-      setBaseUrl(decodedUrl.split('?')[0]); // Extract base URL
-      checkForAuthentication(decodedUrl.split('?')[0]);
+      setGeneratedUrl(rawUrl);
+      console.log("Generated URL:", rawUrl);
     });
-  }, []);
 
-  function checkForAuthentication(baseUrl) {
-    if (!baseUrl) return;
+    // Listen for messages from the iframe
+    const handleMessage = (event) => {
+      if (!event.origin.includes('your-eQube-domain.com')) return; // Replace with actual domain
 
-    let tokenData = sessionStorage.getItem("oAuthTokenData");
-    if (tokenData) {
-      tokenData = JSON.parse(tokenData);
-      if (tokenData[baseUrl]) {
-        console.log("Token exists for baseUrl:", baseUrl);
-        return;
+      console.log("Received postMessage:", event.data);
+
+      if (event.data?.ticket) {
+        setAuthTicket(event.data.ticket);
+        console.log("Auth Ticket Received:", event.data.ticket);
       }
-    }
-    console.log("No token found, initiating login...");
-    initiateLogin(baseUrl);
-  }
+    };
 
-  function initiateLogin(baseUrl) {
-    if (!baseUrl) return;
-    
-    window.addEventListener("message", receiveMessage, false);
-    
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = `${baseUrl}/services/initiateLogin`;
-    form.target = "_blank";
-    
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "loginCompleteURL";
-    input.value = `Integration/validate_complete.jsp?SPURL=${encodeURIComponent(window.location.href)}`;
-    form.appendChild(input);
-    
-    document.body.appendChild(form);
-    form.submit();
-  }
+    window.addEventListener('message', handleMessage);
 
-  function receiveMessage(event) {
-    if (!baseUrl || !event.data) return;
-
-    if (event.data === "MULTIPLE_USERS" || event.data === "9097") {
-      console.error("Multiple users detected. Log out and try again.");
-      window.removeEventListener("message", receiveMessage);
-      return;
-    }
-
-    const token = event.data;
-    if (token) {
-      let tokenData = sessionStorage.getItem("oAuthTokenData") ? JSON.parse(sessionStorage.getItem("oAuthTokenData")) : {};
-      tokenData[baseUrl] = token;
-      sessionStorage.setItem("oAuthTokenData", JSON.stringify(tokenData));
-      console.log("Token stored successfully:", token);
-      window.removeEventListener("message", receiveMessage);
-    }
-  }
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, []);
 
   if (!context) {
     return 'Loading...';
@@ -83,13 +80,16 @@ function View() {
   return (
     <div>
       {generatedUrl ? (
-        <iframe 
-          src={generatedUrl} 
-          width="100%" 
-          height="500px" 
-          title="Generated View"
-          key={generatedUrl} 
-        ></iframe>
+        <>
+          <iframe 
+            src={generatedUrl} 
+            width="100%" 
+            height="500px" 
+            title="Login Page"
+            key={generatedUrl} 
+          ></iframe>
+          {authTicket && <p>Auth Ticket: {authTicket}</p>}
+        </>
       ) : (
         'No URL generated yet.'
       )}
@@ -98,16 +98,26 @@ function View() {
 }
 
 export default View;
-function initiateLogin(baseUrl) {
-    if (!baseUrl) return;
 
-    window.addEventListener("message", receiveMessage, false);
 
-    const loginUrl = `${baseUrl}/services/initiateLogin`;
-    const loginCompleteURL = `Integration/validate_complete.jsp?SPURL=${encodeURIComponent(window.location.href)}`;
+const fetchData = async () => {
+  if (!authTicket) return;
 
-    // Open the login URL in a new tab with the necessary parameters
-    const fullUrl = `${loginUrl}?loginCompleteURL=${encodeURIComponent(loginCompleteURL)}`;
-    
-    window.open(fullUrl, "_blank"); // ✅ Opens login page in a new tab
-}
+  try {
+    const response = await fetch('your-api-endpoint', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${authTicket}`
+      }
+    });
+
+    const data = await response.json();
+    console.log("API Response:", data);
+  } catch (error) {
+    console.error("API Error:", error);
+  }
+};
+
+useEffect(() => {
+  fetchData();
+}, [authTicket]); // Fetch data when authTicket is received
