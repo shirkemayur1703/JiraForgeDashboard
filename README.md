@@ -1,4 +1,50 @@
 import React, { useEffect, useState } from 'react';
+import { view } from '@forge/bridge';
+
+function decodeHtmlEntities(text) {
+  const parser = new DOMParser();
+  return parser.parseFromString(text, "text/html").body.textContent;
+}
+
+function View() {
+  const [context, setContext] = useState();
+  const [generatedUrl, setGeneratedUrl] = useState('');
+
+  useEffect(() => {
+    view.getContext().then((ctx) => {
+      setContext(ctx);
+      const rawUrl = ctx.extension.gadgetConfiguration?.generatedUrl || '';
+      const decodedUrl = decodeHtmlEntities(rawUrl);
+      setGeneratedUrl(decodedUrl);
+      console.log("Generated URL for iframe:", decodedUrl);
+    });
+  }, []);
+
+  if (!context) {
+    return 'Loading...';
+  }
+
+  return (
+    <div>
+      {generatedUrl ? (
+        <iframe 
+          src={generatedUrl} 
+          width="100%" 
+          height="500px" 
+          title="Report View"
+          key={generatedUrl} 
+        ></iframe>
+      ) : (
+        'No URL generated yet.'
+      )}
+    </div>
+  );
+}
+
+export default View;
+
+
+import React, { useEffect, useState } from 'react';
 import Form, { Field } from '@atlaskit/form';
 import TextField from '@atlaskit/textfield';
 import Button from '@atlaskit/button';
@@ -12,11 +58,9 @@ function Edit() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [reportUrl, setReportUrl] = useState('');
 
-  // Listen for postMessage to get oAuthToken
   useEffect(() => {
     const handleMessage = (event) => {
       console.log("Message received:", event);
-
       if (!event.origin.includes('your-eQube-domain.com')) return; // Replace with actual domain
 
       try {
@@ -36,7 +80,6 @@ function Edit() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Fetch reports once authToken is received
   useEffect(() => {
     if (!authToken || !generatedUrl) return;
 
@@ -67,14 +110,12 @@ function Edit() {
     fetchReports();
   }, [authToken, generatedUrl]);
 
-  // Handle form submission to generate login iframe
   const onSubmit = (formData) => {
     const { baseUrl } = formData;
     if (!baseUrl) return;
     setGeneratedUrl(`${baseUrl}/services/initiateLogin`);
   };
 
-  // Generate report URL on submit
   const generateReportURL = () => {
     if (!selectedReport) {
       alert("Please select a report first.");
@@ -87,6 +128,9 @@ function Edit() {
 
     const url = `${baseUrl}/integration?reportId=${reportID}&reportType=${reportType}&applicationType=webparts&showLoginInPopUp=true`;
     setReportUrl(url);
+
+    // Send URL to View.js
+    view.submit({ generatedUrl: url });
   };
 
   return (
